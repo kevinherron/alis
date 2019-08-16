@@ -954,7 +954,8 @@ function desktop_environment_gnome() {
 }
 
 function desktop_environment_kde() {
-    pacman_install "plasma-meta kde-applications-meta"
+    pacman_install "sddm plasma-meta kde-applications-meta"
+    arch-chroot /mnt cp /usr/lib/sddm/sddm.conf.d/default.conf /etc/sddm.conf
     arch-chroot /mnt sed -i 's/Current=.*/Current=breeze/' /etc/sddm.conf
     arch-chroot /mnt systemctl enable sddm.service
 }
