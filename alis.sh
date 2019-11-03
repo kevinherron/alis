@@ -46,6 +46,7 @@ PARTITION_BIOS=""
 PARTITION_BOOT=""
 PARTITION_ROOT=""
 DEVICE_ROOT=""
+LVM_DEVICE=""
 LVM_VOLUME_PHISICAL="lvm"
 LVM_VOLUME_GROUP="vg"
 LVM_VOLUME_LOGICAL="root"
@@ -58,6 +59,7 @@ PARTUUID_BOOT=""
 PARTUUID_ROOT=""
 DEVICE_SATA=""
 DEVICE_NVME=""
+DEVICE_MMC=""
 CPU_INTEL=""
 VIRTUALBOX=""
 CMDLINE_LINUX_ROOT=""
@@ -65,7 +67,10 @@ CMDLINE_LINUX=""
 ADDITIONAL_USER_NAMES_ARRAY=()
 ADDITIONAL_USER_PASSWORDS_ARRAY=()
 
-LOG="alis.log"
+CONF_FILE="alis.conf"
+LOG_FILE="alis.log"
+ASCIINEMA_FILE="alis.asciinema"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 LIGHT_BLUE='\033[1;34m'
@@ -123,9 +128,9 @@ function check_variables() {
     check_variables_equals "USER_PASSWORD" "USER_PASSWORD_RETYPE" "$USER_PASSWORD" "$USER_PASSWORD_RETYPE"
     check_variables_size "ADDITIONAL_USER_PASSWORDS" "${#ADDITIONAL_USER_NAMES_ARRAY[@]}" "${#ADDITIONAL_USER_PASSWORDS_ARRAY[@]}"
     check_variables_list "BOOTLOADER" "$BOOTLOADER" "grub refind systemd"
-    check_variables_list "AUR" "$AUR" "aurman yay"
+    check_variables_list "AUR" "$AUR" "aurman yay" "false"
     check_variables_list "DESKTOP_ENVIRONMENT" "$DESKTOP_ENVIRONMENT" "gnome kde xfce mate cinnamon lxde" "false"
-    check_variables_list "DISPLAY_DRIVER" "$DISPLAY_DRIVER" "intel amdgpu ati nvidia nvidia-lts nvidia-390xx nvidia-390xx-lts nvidia-340xx nvidia-340xx-lts nouveau" "false"
+    check_variables_list "DISPLAY_DRIVER" "$DISPLAY_DRIVER" "intel amdgpu ati nvidia nvidia-lts nvidia-dkms nvidia-390xx nvidia-390xx-lts nvidia-390xx-dkms nouveau" "false"
     check_variables_boolean "KMS" "$KMS"
     check_variables_boolean "DISPLAY_DRIVER_DDX" "$DISPLAY_DRIVER_DDX"
     check_variables_boolean "DISPLAY_DRIVER_HARDWARE_ACCELERATION" "$DISPLAY_DRIVER_HARDWARE_ACCELERATION"
@@ -215,8 +220,8 @@ function init() {
 
 function init_log() {
     if [ "$LOG" == "true" ]; then
-        exec > >(tee -a $LOG)
-        exec 2> >(tee -a $LOG >&2)
+        exec > >(tee -a $LOG_FILE)
+        exec 2> >(tee -a $LOG_FILE >&2)
     fi
     set -o xtrace
 }
@@ -232,7 +237,7 @@ function facts() {
         BIOS_TYPE="bios"
     fi
 
-    if [ -f alis.asciinema ]; then
+    if [ -f "$ASCIINEMA_FILE" ]; then
         ASCIINEMA="true"
     else
         ASCIINEMA="false"
@@ -240,10 +245,13 @@ function facts() {
 
     DEVICE_SATA="false"
     DEVICE_NVME="false"
-    if [ -n "$(echo $DEVICE | grep "^/dev/sda")" ]; then
+    DEVICE_MMC="false"
+    if [ -n "$(echo $DEVICE | grep "^/dev/[a-z]d[a-z]")" ]; then
         DEVICE_SATA="true"
     elif [ -n "$(echo $DEVICE | grep "^/dev/nvme")" ]; then
         DEVICE_NVME="true"
+    elif [ -n "$(echo $DEVICE | grep "^/dev/mmc")" ]; then
+        DEVICE_MMC="true"
     fi
 
     if [ -n "$(lscpu | grep GenuineIntel)" ]; then
@@ -306,13 +314,14 @@ function configure_network() {
 
         sed -i 's/^Interface=.*/Interface='"$WIFI_INTERFACE"'/' /etc/netctl/wireless-wpa
         sed -i 's/^ESSID=.*/ESSID='"$WIFI_ESSID"'/' /etc/netctl/wireless-wpa
-        sed -i 's/^Key=.*/Key='\''$WIFI_KEY'\''/' /etc/netctl/wireless-wpa
+        sed -i 's/^Key=.*/Key='"$WIFI_KEY"'/' /etc/netctl/wireless-wpa
         if [ "$WIFI_HIDDEN" == "true" ]; then
             sed -i 's/^#Hidden=.*/Hidden=yes/' /etc/netctl/wireless-wpa
         fi
 
+        netctl stop-all
         netctl start wireless-wpa
-        sleep 5
+        sleep 10
     fi
 
     ping -c 5 $PING_HOSTNAME
@@ -345,6 +354,13 @@ function partition() {
             DEVICE_ROOT="${DEVICE}p2"
         fi
 
+        if [ "$DEVICE_MMC" == "true" ]; then
+            PARTITION_BOOT="${DEVICE}p1"
+            PARTITION_ROOT="${DEVICE}p2"
+            #PARTITION_BOOT_NUMBER=1
+            DEVICE_ROOT="${DEVICE}p2"
+        fi
+
         parted -s $DEVICE mklabel gpt mkpart primary fat32 1MiB 512MiB mkpart primary $FILE_SYSTEM_TYPE 512MiB 100% set 1 boot on
         sgdisk -t=1:ef00 $DEVICE
         if [ "$LVM" == "true" ]; then
@@ -369,11 +385,25 @@ function partition() {
             DEVICE_ROOT="${DEVICE}p3"
         fi
 
+        if [ "$DEVICE_MMC" == "true" ]; then
+            PARTITION_BIOS="${DEVICE}p1"
+            PARTITION_BOOT="${DEVICE}p2"
+            PARTITION_ROOT="${DEVICE}p3"
+            #PARTITION_BOOT_NUMBER=2
+            DEVICE_ROOT="${DEVICE}p3"
+        fi
+
         parted -s $DEVICE mklabel gpt mkpart primary fat32 1MiB 128MiB mkpart primary $FILE_SYSTEM_TYPE 128MiB 512MiB mkpart primary $FILE_SYSTEM_TYPE 512MiB 100% set 1 boot on
         sgdisk -t=1:ef02 $DEVICE
         if [ "$LVM" == "true" ]; then
             sgdisk -t=3:8e00 $DEVICE
         fi
+    fi
+
+    if [ -n "$PARTITION_ROOT_ENCRYPTION_PASSWORD" ]; then
+        LVM_DEVICE="/dev/mapper/$LVM_VOLUME_PHISICAL"
+    else
+        LVM_DEVICE="$PARTITION_ROOT"
     fi
 
     if [ -n "$PARTITION_ROOT_ENCRYPTION_PASSWORD" ]; then
@@ -383,8 +413,8 @@ function partition() {
     fi
 
     if [ "$LVM" == "true" ]; then
-        pvcreate /dev/mapper/$LVM_VOLUME_PHISICAL
-        vgcreate $LVM_VOLUME_GROUP /dev/mapper/$LVM_VOLUME_PHISICAL
+        pvcreate $LVM_DEVICE
+        vgcreate $LVM_VOLUME_GROUP $LVM_DEVICE
         lvcreate -l 100%FREE -n $LVM_VOLUME_LOGICAL $LVM_VOLUME_GROUP
 
         DEVICE_ROOT="/dev/mapper/$LVM_VOLUME_GROUP-$LVM_VOLUME_LOGICAL"
@@ -442,14 +472,10 @@ function install() {
     sed -i 's/#Color/Color/' /etc/pacman.conf
     sed -i 's/#TotalDownload/TotalDownload/' /etc/pacman.conf
 
-    pacstrap /mnt base base-devel
+    pacstrap /mnt base base-devel linux
 
     sed -i 's/#Color/Color/' /mnt/etc/pacman.conf
     sed -i 's/#TotalDownload/TotalDownload/' /mnt/etc/pacman.conf
-
-    if [ "$DEVICE_TRIM" == "true" ]; then
-        arch-chroot /mnt systemctl enable fstrim.timer
-    fi
 }
 
 function kernels() {
@@ -478,6 +504,7 @@ function configuration() {
 
     if [ "$DEVICE_TRIM" == "true" ]; then
         sed -i 's/relatime/noatime/' /mnt/etc/fstab
+        arch-chroot /mnt systemctl enable fstrim.timer
     fi
 
     arch-chroot /mnt ln -s -f $TIMEZONE /etc/localtime
@@ -527,7 +554,7 @@ function mkinitcpio() {
             "intel" )
                 MODULES="i915"
                 ;;
-            "nvidia" | "nvidia-390xx" | "nvidia-390xx-lts" )
+            "nvidia" | "nvidia-lts"  | "nvidia-dkms" | "nvidia-390xx" | "nvidia-390xx-lts" | "nvidia-390xx-dkms" )
                 MODULES="nvidia nvidia_modeset nvidia_uvm nvidia_drm"
                 ;;
             "amdgpu" )
@@ -541,6 +568,10 @@ function mkinitcpio() {
                 ;;
         esac
         arch-chroot /mnt sed -i "s/MODULES=()/MODULES=($MODULES)/" /etc/mkinitcpio.conf
+    fi
+
+    if [ "$LVM" == "true" ]; then
+        pacman_install "lvm2"
     fi
 
     if [ "$LVM" == "true" -a -n "$PARTITION_ROOT_ENCRYPTION_PASSWORD" ]; then
@@ -606,7 +637,7 @@ function grub() {
     pacman_install "grub dosfstools"
     arch-chroot /mnt sed -i 's/GRUB_DEFAULT=0/GRUB_DEFAULT=saved/' /etc/default/grub
     arch-chroot /mnt sed -i 's/#GRUB_SAVEDEFAULT="true"/GRUB_SAVEDEFAULT="true"/' /etc/default/grub
-    arch-chroot /mnt sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="quiet"/GRUB_CMDLINE_LINUX_DEFAULT=""/' /etc/default/grub
+    arch-chroot /mnt sed -E 's/GRUB_CMDLINE_LINUX_DEFAULT="(.*) quiet"/GRUB_CMDLINE_LINUX_DEFAULT="\1"/' /etc/default/grub
     arch-chroot /mnt sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="'$CMDLINE_LINUX'"/' /etc/default/grub
     echo "" >> /mnt/etc/default/grub
     echo "# alis" >> /mnt/etc/default/grub
@@ -855,22 +886,22 @@ function desktop_environment() {
     PACKAGES_HARDWARE_ACCELERATION=""
     case "$DISPLAY_DRIVER" in
         "nvidia" )
-            PACKAGES_DRIVER="nvidia nvidia-dkms"
+            PACKAGES_DRIVER="nvidia"
             ;;
         "nvidia-lts" )
-            PACKAGES_DRIVER="nvidia-lts nvidia-dkms"
+            PACKAGES_DRIVER="nvidia-lts"
+            ;;
+        "nvidia-dkms" )
+            PACKAGES_DRIVER="nvidia-dkms"
             ;;
         "nvidia-390xx" )
-            PACKAGES_DRIVER="nvidia-390xx nvidia-390xx-dkms"
+            PACKAGES_DRIVER="nvidia-390xx"
             ;;
         "nvidia-390xx-lts" )
-            PACKAGES_DRIVER="nvidia-390xx-lts nvidia-390xx-dkms"
+            PACKAGES_DRIVER="nvidia-390xx-lts"
             ;;
-        "nvidia-340xx" )
-            PACKAGES_DRIVER="nvidia-340xx nvidia-340xx-dkms"
-            ;;
-        "nvidia-340xx-lts" )
-            PACKAGES_DRIVER="nvidia-340xx-lts nvidia-340xx-dkms"
+        "nvidia-390xx-dkms" )
+            PACKAGES_DRIVER="nvidia-390xx-dkms"
             ;;
     esac
     if [ "$DISPLAY_DRIVER_DDX" == "true" ]; then
@@ -954,7 +985,7 @@ function desktop_environment_gnome() {
 }
 
 function desktop_environment_kde() {
-    pacman_install "sddm plasma-meta kde-applications-meta"
+    pacman_install "plasma-meta plasma-wayland-session kde-applications-meta sddm"
     arch-chroot /mnt cp /usr/lib/sddm/sddm.conf.d/default.conf /etc/sddm.conf
     arch-chroot /mnt sed -i 's/Current=.*/Current=breeze/' /etc/sddm.conf
     arch-chroot /mnt systemctl enable sddm.service
@@ -1005,7 +1036,7 @@ function packages_aur() {
             "aurman" )
                 arch-chroot /mnt bash -c "echo -e \"$USER_PASSWORD\n$USER_PASSWORD\n$USER_PASSWORD\n$USER_PASSWORD\n\" | su $USER_NAME -c \"cd /home/$USER_NAME && git clone https://aur.archlinux.org/$AUR.git && gpg --recv-key 465022E743D71E39 && (cd $AUR && makepkg -si --noconfirm) && rm -rf $AUR\""
                 ;;
-            "yay" )
+            "yay" | *)
                 arch-chroot /mnt bash -c "echo -e \"$USER_PASSWORD\n$USER_PASSWORD\n$USER_PASSWORD\n$USER_PASSWORD\n\" | su $USER_NAME -c \"cd /home/$USER_NAME && git clone https://aur.archlinux.org/$AUR.git && (cd $AUR && makepkg -si --noconfirm) && rm -rf $AUR\""
                 ;;
         esac
@@ -1018,9 +1049,15 @@ function packages_aur() {
 }
 
 function terminate() {
+    cp "$CONF_FILE" "/mnt/etc/$CONF_FILE"
+
     if [ "$LOG" == "true" ]; then
         mkdir -p /mnt/var/log
-        cp "$LOG" "/mnt/var/log/$LOG"
+        cp "$LOG_FILE" "/mnt/var/log/$LOG_FILE"
+    fi
+    if [ "$ASCIINEMA" == "true" ]; then
+        mkdir -p /mnt/var/log
+        cp "$ASCIINEMA_FILE" "/mnt/var/log/$ASCIINEMA_FILE"
     fi
 }
 

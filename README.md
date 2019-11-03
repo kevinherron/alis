@@ -9,7 +9,7 @@ the [Arch Linux wiki](https://wiki.archlinux.org), the [Installation Guide](http
 Recomendations](https://wiki.archlinux.org/index.php/General_recommendations), later
 compare those commands with the commands of this script.
 
-For new features, improvements and bugs fill an issue in GitHub or make a pull request. You can test it in a VirtualBox virtual machine. If you test it in real hardware please send me an email to pico.dev@gmail.com with the machine description and tell me if something goes wrong or all works fine. [Pull request](https://github.com/picodotdev/alis/pulls) and [new feature request](https://github.com/picodotdev/alis/issues) are welcome!
+For new features, improvements and bugs fill an issue in GitHub or make a pull request. You can test it in a VirtualBox virtual machine (recommended) before run it in real hardware. If you test it in real hardware please send me an email to pico.dev@gmail.com with the machine description and tell me if something goes wrong or all works fine. [Pull request](https://github.com/picodotdev/alis/pulls) and [new feature request](https://github.com/picodotdev/alis/issues) are welcome!
 
 **Warning! This script deletes all partitions of the persistent storage**
 
@@ -18,7 +18,7 @@ Currently these scripts are for me but maybe they are useful for you too.
 ### Features
 
 * GPT, UEFI, BIOS
-* Support for SATA and NVMe
+* Support for SATA, NVMe and MMC
 * LVM and no LVM
 * _root_ partition encrypted and no encrypted
 * LVM on LUKS when LVM and encrypted
