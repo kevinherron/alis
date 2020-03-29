@@ -15,15 +15,15 @@ rm -f alis-recovery.sh
 rm -f alis-recovery-asciinema.sh
 rm -f alis-recovery-reboot.sh
 
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis.conf
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis.sh
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis-asciinema.sh
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis-reboot.sh
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis.conf
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis.sh
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis-asciinema.sh
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis-reboot.sh
 
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis-recovery.conf
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis-recovery.sh
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis-recovery-asciinema.sh
-wget https://raw.githubusercontent.com/kevinherron/alis/master/alis-recovery-reboot.sh
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis-recovery.conf
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis-recovery.sh
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis-recovery-asciinema.sh
+wget https://raw.githubusercontent.com/kevinherron/alis/x1c6/alis-recovery-reboot.sh
 
 chmod +x alis.sh
 chmod +x alis-asciinema.sh
